@@ -41,16 +41,19 @@ func UserRegister(c *gin.Context) {
 
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Bad Request",
+			"status":  "error",
 			"message": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{
-		"id":       User.ID,
-		"fullname": User.Full_Name,
-		"email":    User.Email,
+		"status": "success",
+		"data": gin.H{
+			"id":       User.ID,
+			"fullname": User.Full_Name,
+			"email":    User.Email,
+		},
 	})
 }
 
@@ -72,7 +75,7 @@ func UserLogin(c *gin.Context) {
 	err := db.Debug().Where("email=?", Login.Email).Take(&User).Error
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "Unauthorized",
+			"status":  "error",
 			"message": "Invalid Email/Password",
 		})
 		return
@@ -82,7 +85,7 @@ func UserLogin(c *gin.Context) {
 
 	if !comparePass {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "Unauthorized",
+			"status":  "error",
 			"message": "Invalid email/password",
 		})
 		return
@@ -91,7 +94,10 @@ func UserLogin(c *gin.Context) {
 	token := helpers.GenerateToken(User.ID, User.Email)
 
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
+		"status": "success",
+		"data": gin.H{
+			"token": token,
+		},
 	})
 }
 
@@ -101,20 +107,21 @@ func GetDetailUser(c *gin.Context) {
 	userID := uint(userData["id"].(float64))
 	User := models.User{}
 
-	err := db.First(&User).Where("id=?", userID).Error
+	err := db.First(&User, userID).Error
 
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Bad Request",
+			"status":  "error",
 			"message": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"full_name": User.Full_Name,
-		"email":     User.Email,
-		"balance":   User.Balance,
-		"status":    User.Status,
+		"status": "success",
+		"data": gin.H{"full_name": User.Full_Name,
+			"email":   User.Email,
+			"balance": User.Balance,
+			"status":  User.Status},
 	})
 }

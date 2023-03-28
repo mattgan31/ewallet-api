@@ -107,7 +107,7 @@ func GetDetailUser(c *gin.Context) {
 	userID := uint(userData["id"].(float64))
 	User := models.User{}
 
-	err := db.First(&User).Where("id=?", userID).Error
+	err := db.First(&User, userID).Error
 
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{

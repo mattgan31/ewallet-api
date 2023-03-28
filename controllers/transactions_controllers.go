@@ -29,7 +29,7 @@ func Topup(c *gin.Context) {
 		c.ShouldBind(&Input)
 	}
 
-	err := db.First(&User).Where("id=?", userID).Error
+	err := db.First(&User, userID).Error
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",

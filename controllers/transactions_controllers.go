@@ -8,19 +8,25 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt"
 )
 
-type TopupInput struct {
+type TransactionInput struct {
 	Amount int `json:"amount" validate:"required"`
 }
 
 func Topup(c *gin.Context) {
-	var Input TopupInput
+	var Input TransactionInput
 	db := database.GetDB()
 	User := models.User{}
-	userData := c.MustGet("userData").(jwt.MapClaims)
-	userID := uint(userData["id"].(float64))
+
+	userID, exists := c.Get("user_id")
+
+	if !exists {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "User Not Found",
+		})
+	}
 
 	contentType := helpers.GetContentType(c)
 	if contentType == appJSON {
@@ -40,7 +46,7 @@ func Topup(c *gin.Context) {
 
 	newBalance := User.Balance + Input.Amount
 	typeTransaction := "topup"
-	err = db.Debug().Model(&User).Where("id=?", userID).Update("balance", newBalance).Error
+	err = db.Debug().Model(&User).Update("balance", newBalance).Error
 
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -49,15 +55,21 @@ func Topup(c *gin.Context) {
 		})
 		return
 	}
-	HistoryTransaction(c, Input.Amount, int(userID), typeTransaction)
+	HistoryTransaction(c, Input.Amount, userID.(uint), typeTransaction)
 }
 
 func Payment(c *gin.Context) {
-	var Input TopupInput
+	var Input TransactionInput
 	db := database.GetDB()
 	User := models.User{}
-	userData := c.MustGet("userData").(jwt.MapClaims)
-	userID := uint(userData["id"].(float64))
+	userID, exists := c.Get("user_id")
+
+	if !exists {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "User Not Found",
+		})
+	}
 
 	contentType := helpers.GetContentType(c)
 	if contentType == appJSON {
@@ -94,11 +106,10 @@ func Payment(c *gin.Context) {
 		})
 		return
 	}
-	HistoryTransaction(c, Input.Amount, int(userID), typeTransaction)
-
+	HistoryTransaction(c, Input.Amount, userID.(uint), typeTransaction)
 }
 
-func HistoryTransaction(c *gin.Context, amount int, userID int, typeTransaction string) {
+func HistoryTransaction(c *gin.Context, amount int, userID uint, typeTransaction string) {
 	db := database.GetDB()
 	Transaction := models.Transaction{}
 	Transaction.Amount = amount

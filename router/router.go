@@ -16,6 +16,9 @@ func StartServer() *gin.Engine {
 		userRouter.POST("/login", controllers.UserLogin)
 		userRouter.GET("/detail", middleware.Authentication(), controllers.GetDetailUser)
 	}
-
+	transactionRouter := router.Group("/transaction")
+	{
+		transactionRouter.POST("topup", middleware.Authentication(), controllers.Topup)
+	}
 	return router
 }

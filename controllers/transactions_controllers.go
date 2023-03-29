@@ -133,3 +133,42 @@ func HistoryTransaction(c *gin.Context, amount int, userID uint, typeTransaction
 		"data":   &Transaction,
 	})
 }
+
+func GetHistory(c *gin.Context) {
+	db := database.GetDB()
+	Transaction := []models.Transaction{}
+	var result gin.H
+	userID, exists := c.Get("user_id")
+
+	if !exists {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "User Not Found",
+		})
+		return
+	}
+
+	err := db.Where("user_id=?", userID).Find(&Transaction).Error
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "Data Not Found",
+		})
+		return
+	}
+
+	if len(Transaction) <= 0 {
+		result = gin.H{
+			"result": "data not found",
+		}
+	} else {
+		result = gin.H{
+			"result": Transaction,
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"data":   result,
+	})
+}

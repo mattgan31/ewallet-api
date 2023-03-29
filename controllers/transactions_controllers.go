@@ -4,7 +4,6 @@ import (
 	"ewallet-api/database"
 	"ewallet-api/helpers"
 	"ewallet-api/models"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -148,8 +147,6 @@ func GetHistory(c *gin.Context) {
 		})
 		return
 	}
-
-	fmt.Println(userID)
 
 	err := db.Where("user_id=?", userID).Find(&Transaction).Error
 	if err != nil {

@@ -16,12 +16,14 @@ func StartServer() *gin.Engine {
 		userRouter.POST("/login", controllers.UserLogin)
 		userRouter.GET("/detail", middleware.Authentication(), controllers.GetDetailUser)
 	}
-	transactionRouter := router.Group("/transaction")
+
+	transactionRouter := router.Group("/transaction").Use(middleware.Authentication(), middleware.GetUserID())
 	{
-		transactionRouter.POST("/topup", middleware.Authentication(), middleware.GetUserID(), controllers.Topup)
-		transactionRouter.POST("/payment", middleware.Authentication(), middleware.GetUserID(), controllers.Payment)
-		transactionRouter.GET("/history", middleware.Authentication(), middleware.GetUserID(), controllers.GetHistory)
-		transactionRouter.POST("/transfer", middleware.Authentication(), middleware.GetUserID(), controllers.Transfer)
+		transactionRouter.POST("/topup", controllers.Topup)
+		transactionRouter.POST("/payment", controllers.Payment)
+		transactionRouter.GET("/history", controllers.GetHistory)
+		transactionRouter.POST("/transfer", controllers.Transfer)
 	}
+
 	return router
 }

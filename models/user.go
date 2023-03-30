@@ -24,7 +24,16 @@ func (u *User) BeforeCreate(g *gorm.DB) (err error) {
 		return
 	}
 
-	u.Password = helpers.HashPass(u.Password)
+	u.Password, _ = helpers.HashPass(u.Password)
 	err = nil
 	return
+}
+
+func GetUserByID(db *gorm.DB, id uint) (*User, error) {
+	var user User
+	err := db.First(&user, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
 }

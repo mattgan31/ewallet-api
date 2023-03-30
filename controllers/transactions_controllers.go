@@ -4,7 +4,6 @@ import (
 	"ewallet-api/database"
 	"ewallet-api/helpers"
 	"ewallet-api/models"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -21,28 +20,27 @@ type TransferInput struct {
 }
 
 func Topup(c *gin.Context) {
-	var Input TransactionInput
+	var input TransactionInput
 	db := database.GetDB()
-	User := models.User{}
+	var user models.User
 
 	userID, exists := c.Get("user_id")
-
 	if !exists {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "User Not Found",
 		})
+		return
 	}
 
 	contentType := helpers.GetContentType(c)
 	if contentType == appJSON {
-		c.ShouldBindJSON(&Input)
+		c.ShouldBindJSON(&input)
 	} else {
-		c.ShouldBind(&Input)
+		c.ShouldBind(&input)
 	}
 
-	err := db.First(&User, userID).Error
-	if err != nil {
+	if err := db.First(&user, userID).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": err.Error(),
@@ -50,25 +48,32 @@ func Topup(c *gin.Context) {
 		return
 	}
 
-	newBalance := User.Balance + Input.Amount
+	newBalance := user.Balance + input.Amount
 	typeTransaction := "topup"
-	err = db.Debug().Model(&User).Update("balance", newBalance).Error
 
-	if err != nil {
+	if err := db.Debug().Model(&user).Update("balance", newBalance).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": err.Error(),
 		})
 		return
 	}
+
 	description := "topup"
-	HistoryTransaction(c, Input.Amount, userID.(uint), typeTransaction, description)
+	HistoryTransaction(c, input.Amount, userID.(uint), typeTransaction, description)
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"data": gin.H{
+			"user_id": userID,
+			"balance": newBalance,
+		},
+	})
 }
 
 func Payment(c *gin.Context) {
 	var Input TransactionInput
 	db := database.GetDB()
-	User := models.User{}
 	userID, exists := c.Get("user_id")
 
 	if !exists {
@@ -76,6 +81,7 @@ func Payment(c *gin.Context) {
 			"status":  "error",
 			"message": "User Not Found",
 		})
+		return
 	}
 
 	contentType := helpers.GetContentType(c)
@@ -85,8 +91,9 @@ func Payment(c *gin.Context) {
 		c.ShouldBind(&Input)
 	}
 
-	err := db.First(&User, userID).Error
-	if err != nil {
+	User := models.User{GormModel: models.GormModel{ID: userID.(uint)}}
+
+	if err := db.First(&User).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": err.Error(),
@@ -104,23 +111,21 @@ func Payment(c *gin.Context) {
 
 	newBalance := User.Balance - Input.Amount
 	typeTransaction := "payment"
-	err = db.Debug().Model(&User).Where("id=?", userID).Update("balance", newBalance).Error
 
-	if err != nil {
+	if err := db.Model(&User).Update("balance", newBalance).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": err.Error(),
 		})
 		return
 	}
+
 	description := "payment"
 	HistoryTransaction(c, Input.Amount, userID.(uint), typeTransaction, description)
 }
 
 func Transfer(c *gin.Context) {
 	db := database.GetDB()
-	var Input TransferInput
-	User := models.User{}
 
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -128,8 +133,10 @@ func Transfer(c *gin.Context) {
 			"status":  "error",
 			"message": "User Not Found",
 		})
+		return
 	}
 
+	var Input TransferInput
 	contentType := helpers.GetContentType(c)
 	if contentType == appJSON {
 		c.ShouldBindJSON(&Input)
@@ -137,8 +144,17 @@ func Transfer(c *gin.Context) {
 		c.ShouldBind(&Input)
 	}
 
-	err := db.First(&User, userID).Error
+	tx := db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	var User, User2 models.User
+	err := tx.Where("id = ?", userID).First(&User).Error
 	if err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": err.Error(),
@@ -147,6 +163,7 @@ func Transfer(c *gin.Context) {
 	}
 
 	if User.Balance < Input.Amount {
+		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "Your Balance is not enough for this payment",
@@ -154,13 +171,9 @@ func Transfer(c *gin.Context) {
 		return
 	}
 
-	// newBalance2:=
-	User2 := models.User{}
-
-	err2 := db.Where("email=?", Input.EmailDestination).First(&User2).Error
-
-	fmt.Println(User2)
-	if err2 != nil {
+	err = tx.Where("email = ?", Input.EmailDestination).First(&User2).Error
+	if err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": err.Error(),
@@ -168,9 +181,8 @@ func Transfer(c *gin.Context) {
 		return
 	}
 
-	fmt.Println(User2.Status)
-
 	if User2.Status != "active" {
+		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "Account Destination is inactive",
@@ -179,41 +191,54 @@ func Transfer(c *gin.Context) {
 	}
 
 	newBalance2 := User2.Balance + Input.Amount
-	err2 = db.Model(&User2).Where("email=?", Input.EmailDestination).Update("balance", newBalance2).Error
-	if err2 != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"status":  "error",
-			"message": err.Error(),
-		})
-		return
-	}
-	newBalance := User.Balance - Input.Amount
-	typeTransaction := "transfer"
-	err = db.Debug().Model(&User).Where("id=?", userID).Update("balance", newBalance).Error
-
+	err = tx.Model(&User2).Where("email = ?", Input.EmailDestination).Update("balance", newBalance2).Error
 	if err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": err.Error(),
 		})
 		return
 	}
+
+	newBalance := User.Balance - Input.Amount
+	err = tx.Model(&User).Where("id = ?", userID).Update("balance", newBalance).Error
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	typeTransaction := "transfer"
 	description := "transfer to " + Input.EmailDestination
 	HistoryTransaction(c, Input.Amount, userID.(uint), typeTransaction, description)
+
+	tx.Commit()
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "Transfer Success",
+	})
 }
 
-func HistoryTransaction(c *gin.Context, amount int, userID uint, typeTransaction string, description string) {
+func HistoryTransaction(c *gin.Context, amount int, userID uint, typeTransaction, description string) {
 	db := database.GetDB()
-	Transaction := models.Transaction{}
-	Transaction.Amount = amount
-	Transaction.Created_At = time.Now()
-	Transaction.Updated_At = time.Now()
-	Transaction.Description = description
-	Transaction.Type = typeTransaction
-	Transaction.User_ID = int(userID)
 
-	err := db.Debug().Create(&Transaction).Error
-	if err != nil {
+	transaction := models.Transaction{
+		Amount: amount,
+		GormModel: models.GormModel{
+			Created_At: time.Now(),
+			Updated_At: time.Now(),
+		},
+		Description: description,
+		Type:        typeTransaction,
+		User_ID:     int(userID),
+	}
+
+	if err := db.Debug().Create(&transaction).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": err.Error(),
@@ -223,16 +248,15 @@ func HistoryTransaction(c *gin.Context, amount int, userID uint, typeTransaction
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
-		"data":   &Transaction,
+		"data":   &transaction,
 	})
 }
 
 func GetHistory(c *gin.Context) {
 	db := database.GetDB()
-	Transaction := []models.Transaction{}
-	var result gin.H
-	userID, exists := c.Get("user_id")
 
+	// Mendapatkan ID pengguna dari context
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
@@ -241,8 +265,9 @@ func GetHistory(c *gin.Context) {
 		return
 	}
 
-	err := db.Where("user_id=?", userID).Find(&Transaction).Error
-	if err != nil {
+	// Mencari transaksi menggunakan ID pengguna
+	var transactions []models.Transaction
+	if err := db.Where("user_id = ?", userID).Find(&transactions).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "Data Not Found",
@@ -250,18 +275,18 @@ func GetHistory(c *gin.Context) {
 		return
 	}
 
-	if len(Transaction) <= 0 {
-		result = gin.H{
-			"result": "data not found",
-		}
-	} else {
-		result = gin.H{
-			"result": Transaction,
+	// Menyiapkan data untuk dikembalikan dalam respons
+	data := gin.H{
+		"result": "data not found",
+	}
+	if len(transactions) > 0 {
+		data = gin.H{
+			"result": transactions,
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
-		"data":   result,
+		"data":   data,
 	})
 }

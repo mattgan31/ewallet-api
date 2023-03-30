@@ -8,22 +8,25 @@ import (
 	"github.com/golang-jwt/jwt"
 )
 
-var secretKey = "rahasia"
+const secretKey = "rahasia"
 
-func GenerateToken(id uint, email string) string {
+func GenerateToken(id uint, email string) (string, error) {
 	claims := jwt.MapClaims{
 		"id":    id,
 		"email": email,
 	}
 
-	parseToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signedToken, err := token.SignedString([]byte(secretKey))
 
-	signedToken, _ := parseToken.SignedString([]byte(secretKey))
+	if err != nil {
+		return "", err
+	}
 
-	return signedToken
+	return signedToken, nil
 }
 
-func VerifyToken(c *gin.Context) (interface{}, error) {
+func VerifyToken(c *gin.Context) (jwt.MapClaims, error) {
 	errResponse := errors.New("sign in to proceed")
 	headerToken := c.Request.Header.Get("Authorization")
 	bearer := strings.HasPrefix(headerToken, "Bearer")
@@ -34,7 +37,7 @@ func VerifyToken(c *gin.Context) (interface{}, error) {
 
 	stringToken := strings.Split(headerToken, " ")[1]
 
-	token, _ := jwt.Parse(stringToken, func(t *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(stringToken, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 
 			return nil, errResponse
@@ -42,8 +45,13 @@ func VerifyToken(c *gin.Context) (interface{}, error) {
 		return []byte(secretKey), nil
 	})
 
-	if _, ok := token.Claims.(jwt.MapClaims); !ok && !token.Valid {
+	if err != nil {
+		return nil, err
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok || !token.Valid {
 		return nil, errResponse
 	}
-	return token.Claims.(jwt.MapClaims), nil
+	return claims, nil
 }

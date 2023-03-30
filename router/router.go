@@ -21,6 +21,7 @@ func StartServer() *gin.Engine {
 		transactionRouter.POST("/topup", middleware.Authentication(), middleware.GetUserID(), controllers.Topup)
 		transactionRouter.POST("/payment", middleware.Authentication(), middleware.GetUserID(), controllers.Payment)
 		transactionRouter.GET("/history", middleware.Authentication(), middleware.GetUserID(), controllers.GetHistory)
+		transactionRouter.POST("/transfer", middleware.Authentication(), middleware.GetUserID(), controllers.Transfer)
 	}
 	return router
 }
